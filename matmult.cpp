@@ -216,7 +216,7 @@ void construct_initialise (
 )
 {
 	/*
-	 * Initialise the arrays using selected container type and initial values
+	 * 	Initialise the arrays using selected container type and initial values
 	 */
 	
 	if (container_choice == 1)
@@ -298,7 +298,8 @@ double matrix_multiplication_time (
 )
 {
 	/*
-	 * Perform matrix multiplication using given number of threads in OpenMP and return run time
+	 * 	Perform matrix multiplication using given number of threads in OpenMP and return run time.
+	 *	Naive implementation.
 	 */
 	
 	double starttime = omp_get_wtime();
@@ -323,6 +324,75 @@ double matrix_multiplication_time (
 	return runtime;
 }
 
+
+double matrix_multiplication_time_optimisation1 (
+
+	std::shared_ptr<matrix_base> A,
+	std::shared_ptr<matrix_base> B,
+	std::shared_ptr<matrix_base> C,
+	const int numthreads
+)
+{
+	/*
+	 * 	Perform matrix multiplication using given number of threads in OpenMP and return run time.
+	 *	Transpose B, and perform multiplication by rows. Only works on square matrices, since we cannot resize
+	 *	C-style arrays.
+	 */
+	
+	assert(A_m == A_n);
+	assert(B_m == B_n);
+	
+	double starttime = omp_get_wtime();
+
+	#pragma omp parallel num_threads(numthreads)
+	{
+	
+		#pragma omp for schedule(static)	
+		for (int i=0; i<B_m; i++)
+		{
+			for (int j=0; j<=i; j++)
+			{
+				double temp = (*B)(i,j);
+				(*B)(i,j) = (*B)(j,i);
+				(*B)(j,i) = temp;
+			}
+		}
+	
+		#pragma omp for schedule(static)
+		for (int i=0; i<A_m; i++)
+		{
+			for (int j=0; j<B_n; j++)
+			{
+				for (int k=0; k<A_n; k++)
+				{
+					(*C)(i,j) += (*A)(i,k) * (*B)(j,k);
+				}
+			}
+		}
+
+	}
+
+	double endtime = omp_get_wtime();
+	double runtime = endtime - starttime;
+
+	std::cout << '\t' << "Matrix multiplication finished using " << numthreads << " threads. Runtime = " << runtime << "s" << std::endl;
+
+
+	// Transpose B again so we don't have to reinitialise before next test
+	
+	#pragma omp parallel for num_threads(numthreads)  schedule(static)	
+	for (int i=0; i<B_m; i++)
+	{
+		for (int j=0; j<=i; j++)
+		{
+			double temp = (*B)(i,j);
+			(*B)(i,j) = (*B)(j,i);
+			(*B)(j,i) = temp;
+		}
+	}
+
+	return runtime;
+}
 	
 
 
@@ -337,6 +407,7 @@ int main()
 	
 	const int Ainitchoice = 2;
 	const int Binitchoice = 3;
+	const int matmultfnchoice = 1;
 	const int maxnumthreads = 32;
 
 	std::shared_ptr<matrix_base> A;
@@ -363,7 +434,12 @@ int main()
 
 		for (int i=1; i<=maxnumthreads; i*=2)
 		{
-			double runtime = matrix_multiplication_time(A,B,C,i);
+			double runtime;
+
+			if (matmultfnchoice == 0) runtime = matrix_multiplication_time(A,B,C,i);
+
+			else if (matmultfnchoice == 1) runtime = matrix_multiplication_time_optimisation1(A,B,C,i);
+
 			outfile << runtime << " ";
 		}
 		outfile << std::endl;
